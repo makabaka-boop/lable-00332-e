@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ScatterChart,
   Scatter,
@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FilterState } from '@/app/page';
 
 const allData = [
@@ -64,11 +65,16 @@ const CustomTooltip = ({ active, payload }: any) => {
   return null;
 };
 
+type SortOption = 'value-desc' | 'price-asc' | 'score-desc';
+
 interface ChartSectionProps {
   filters: FilterState;
 }
 
 export function ChartSection({ filters }: ChartSectionProps) {
+  const [sortOption, setSortOption] = useState<SortOption>('value-desc');
+  const [selectedModelName, setSelectedModelName] = useState<string | null>(null);
+
   const filteredData = useMemo(() => {
     if (!filters) {
       return allData;
@@ -104,7 +110,7 @@ export function ChartSection({ filters }: ChartSectionProps) {
     const bestValue = filteredData.length > 0
       ? filteredData.reduce((best, item) => 
           (item.score / item.price) > (best.score / best.price) ? item : best
-        ).family
+        ).name
       : 'N/A';
     const topPerformer = filteredData.length > 0
       ? filteredData.reduce((best, item) => item.score > best.score ? item : best).name
@@ -113,9 +119,48 @@ export function ChartSection({ filters }: ChartSectionProps) {
     return { totalModels, avgPerformance, bestValue, topPerformer };
   }, [filteredData]);
 
+  const sortedData = useMemo(() => {
+    const dataWithValue = filteredData.map(item => ({
+      ...item,
+      value: Number((item.score / item.price).toFixed(1)),
+    }));
+
+    switch (sortOption) {
+      case 'price-asc':
+        return [...dataWithValue].sort((a, b) => a.price - b.price);
+      case 'score-desc':
+        return [...dataWithValue].sort((a, b) => b.score - a.score);
+      case 'value-desc':
+      default:
+        return [...dataWithValue].sort((a, b) => b.value - a.value);
+    }
+  }, [filteredData, sortOption]);
+
+  const selectedModel = useMemo(() => {
+    if (!selectedModelName) return null;
+    return sortedData.find(item => item.name === selectedModelName) || null;
+  }, [sortedData, selectedModelName]);
+
+  useEffect(() => {
+    if (selectedModelName) {
+      const exists = filteredData.some(item => item.name === selectedModelName);
+      if (!exists) {
+        setSelectedModelName(null);
+      }
+    }
+  }, [filteredData, selectedModelName]);
+
+  const handleSelectModel = (name: string) => {
+    if (selectedModelName === name) {
+      setSelectedModelName(null);
+    } else {
+      setSelectedModelName(name);
+    }
+  };
+
   return (
     <div className="h-full w-full space-y-4 p-6 overflow-y-auto">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="bg-card/50 backdrop-blur-sm border-border/50 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">总模型数</CardTitle>
@@ -150,6 +195,23 @@ export function ChartSection({ filters }: ChartSectionProps) {
           <CardContent>
             <div className="text-2xl font-bold">{stats.topPerformer}</div>
             <p className="text-xs text-muted-foreground">最高评分</p>
+          </CardContent>
+        </Card>
+        <Card className={`bg-card/50 backdrop-blur-sm border-border/50 shadow-sm ${selectedModel ? 'ring-2 ring-primary ring-offset-2 ring-offset-background' : ''}`}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">当前选中模型</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-bold truncate">
+              {selectedModel ? selectedModel.name : '未选择'}
+            </div>
+            {selectedModel ? (
+              <p className="text-xs text-muted-foreground">
+                ${selectedModel.price}/百万 · {selectedModel.score}分
+              </p>
+            ) : (
+              <p className="text-xs text-muted-foreground">点击下方列表选择</p>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -198,6 +260,77 @@ export function ChartSection({ filters }: ChartSectionProps) {
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               没有符合条件的模型
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="w-full border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <div>
+            <CardTitle className="text-lg">模型对比清单</CardTitle>
+            <CardDescription>
+              查看筛选后的候选模型，点击选择进行对比
+            </CardDescription>
+          </div>
+          <Select value={sortOption} onValueChange={(value) => setSortOption(value as SortOption)}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="排序方式" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="value-desc">性价比从高到低</SelectItem>
+              <SelectItem value="price-asc">价格从低到高</SelectItem>
+              <SelectItem value="score-desc">评分从高到低</SelectItem>
+            </SelectContent>
+          </Select>
+        </CardHeader>
+        <CardContent>
+          {sortedData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">模型名称</th>
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">系列</th>
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">类型</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">价格</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">性能评分</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">性价比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedData.map((item) => (
+                    <tr
+                      key={item.name}
+                      onClick={() => handleSelectModel(item.name)}
+                      className={`border-b border-border/30 cursor-pointer transition-colors ${
+                        selectedModelName === item.name
+                          ? 'bg-primary/10 hover:bg-primary/15'
+                          : 'hover:bg-accent/50'
+                      }`}
+                    >
+                      <td className="py-3 px-2">
+                        <span className="font-medium">{item.name}</span>
+                      </td>
+                      <td className="py-3 px-2 text-muted-foreground">{item.family}</td>
+                      <td className="py-3 px-2">
+                        <Badge variant={item.type === '开源' ? 'secondary' : 'default'} className="text-[10px] h-5">
+                          {item.type}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2 text-right">${item.price}/百万</td>
+                      <td className="py-3 px-2 text-right font-medium">{item.score}</td>
+                      <td className="py-3 px-2 text-right">
+                        <span className="text-primary font-semibold">{item.value}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-32 text-muted-foreground">
+              暂无符合条件的模型，请调整筛选条件
             </div>
           )}
         </CardContent>
