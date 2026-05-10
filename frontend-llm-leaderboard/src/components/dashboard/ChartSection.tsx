@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import {
   ScatterChart,
   Scatter,
@@ -13,7 +13,9 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { FilterState } from '@/app/page';
+import { FilterState, ModelData } from '@/app/page';
+import { ModelComparisonList } from '@/components/dashboard/ModelComparisonList';
+import { CheckCircle2 } from 'lucide-react';
 
 const allData = [
   { name: 'GPT-4o', price: 15, score: 88.7, family: 'GPT-4', type: '专有' },
@@ -66,9 +68,11 @@ const CustomTooltip = ({ active, payload }: any) => {
 
 interface ChartSectionProps {
   filters: FilterState;
+  selectedModel: ModelData | null;
+  onModelSelect: (model: ModelData | null) => void;
 }
 
-export function ChartSection({ filters }: ChartSectionProps) {
+export function ChartSection({ filters, selectedModel, onModelSelect }: ChartSectionProps) {
   const filteredData = useMemo(() => {
     if (!filters) {
       return allData;
@@ -96,6 +100,12 @@ export function ChartSection({ filters }: ChartSectionProps) {
     });
   }, [filters]);
 
+  useEffect(() => {
+    if (selectedModel && !filteredData.some(d => d.name === selectedModel.name)) {
+      onModelSelect(null);
+    }
+  }, [filteredData, selectedModel, onModelSelect]);
+
   const stats = useMemo(() => {
     const totalModels = filteredData.length;
     const avgPerformance = totalModels > 0 
@@ -115,7 +125,7 @@ export function ChartSection({ filters }: ChartSectionProps) {
 
   return (
     <div className="h-full w-full space-y-4 p-6 overflow-y-auto">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <Card className="bg-card/50 backdrop-blur-sm border-border/50 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">总模型数</CardTitle>
@@ -152,15 +162,39 @@ export function ChartSection({ filters }: ChartSectionProps) {
             <p className="text-xs text-muted-foreground">最高评分</p>
           </CardContent>
         </Card>
+        <Card className={`bg-card/50 backdrop-blur-sm shadow-sm transition-all duration-200 ${selectedModel ? 'border-primary/50 ring-1 ring-primary/20' : 'border-border/50 opacity-60'}`}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-1.5">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              当前选中
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedModel ? (
+              <>
+                <div className="text-lg font-bold truncate" title={selectedModel.name}>{selectedModel.name}</div>
+                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                  <span>${selectedModel.price}/百万</span>
+                  <span>评分 {selectedModel.score}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-lg font-bold text-muted-foreground">--</div>
+                <p className="text-xs text-muted-foreground">点击下方模型选中</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      <Card className="h-[500px] w-full border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
+      <Card className="h-[420px] w-full border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
         <CardHeader>
           <CardDescription>
             比较 MMLU 评分与每百万 tokens 的成本（混合输入/输出）。
           </CardDescription>
         </CardHeader>
-        <CardContent className="h-[400px]">
+        <CardContent className="h-[320px]">
           {filteredData.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
@@ -202,6 +236,12 @@ export function ChartSection({ filters }: ChartSectionProps) {
           )}
         </CardContent>
       </Card>
+
+      <ModelComparisonList
+        data={filteredData}
+        selectedModel={selectedModel}
+        onModelSelect={onModelSelect}
+      />
     </div>
   );
 }
