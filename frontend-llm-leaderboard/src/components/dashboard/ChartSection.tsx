@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   ScatterChart,
   Scatter,
@@ -13,6 +13,7 @@ import {
 } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { FilterState } from '@/app/page';
 
 const allData = [
@@ -68,7 +69,12 @@ interface ChartSectionProps {
   filters: FilterState;
 }
 
+type SortType = 'price-asc' | 'score-desc' | 'value-desc';
+
 export function ChartSection({ filters }: ChartSectionProps) {
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [sortType, setSortType] = useState<SortType>('value-desc');
+
   const filteredData = useMemo(() => {
     if (!filters) {
       return allData;
@@ -96,6 +102,31 @@ export function ChartSection({ filters }: ChartSectionProps) {
     });
   }, [filters]);
 
+  const sortedData = useMemo(() => {
+    const data = [...filteredData];
+    switch (sortType) {
+      case 'price-asc':
+        return data.sort((a, b) => a.price - b.price);
+      case 'score-desc':
+        return data.sort((a, b) => b.score - a.score);
+      case 'value-desc':
+        return data.sort((a, b) => (b.score / b.price) - (a.score / a.price));
+      default:
+        return data;
+    }
+  }, [filteredData, sortType]);
+
+  useEffect(() => {
+    if (selectedModel && !filteredData.find(item => item.name === selectedModel)) {
+      setSelectedModel(null);
+    }
+  }, [filteredData, selectedModel]);
+
+  const selectedModelData = useMemo(() => {
+    if (!selectedModel) return null;
+    return filteredData.find(item => item.name === selectedModel) || null;
+  }, [selectedModel, filteredData]);
+
   const stats = useMemo(() => {
     const totalModels = filteredData.length;
     const avgPerformance = totalModels > 0 
@@ -104,7 +135,7 @@ export function ChartSection({ filters }: ChartSectionProps) {
     const bestValue = filteredData.length > 0
       ? filteredData.reduce((best, item) => 
           (item.score / item.price) > (best.score / best.price) ? item : best
-        ).family
+        ).name
       : 'N/A';
     const topPerformer = filteredData.length > 0
       ? filteredData.reduce((best, item) => item.score > best.score ? item : best).name
@@ -113,9 +144,17 @@ export function ChartSection({ filters }: ChartSectionProps) {
     return { totalModels, avgPerformance, bestValue, topPerformer };
   }, [filteredData]);
 
+  const handleModelClick = (modelName: string) => {
+    setSelectedModel(prev => prev === modelName ? null : modelName);
+  };
+
+  const getValueRatio = (score: number, price: number) => {
+    return (score / price).toFixed(1);
+  };
+
   return (
     <div className="h-full w-full space-y-4 p-6 overflow-y-auto">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <Card className="bg-card/50 backdrop-blur-sm border-border/50 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">总模型数</CardTitle>
@@ -150,6 +189,26 @@ export function ChartSection({ filters }: ChartSectionProps) {
           <CardContent>
             <div className="text-2xl font-bold">{stats.topPerformer}</div>
             <p className="text-xs text-muted-foreground">最高评分</p>
+          </CardContent>
+        </Card>
+        <Card className={`bg-card/50 backdrop-blur-sm border-border/50 shadow-sm transition-all duration-200 ${selectedModelData ? 'ring-2 ring-primary/50' : ''}`}>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">当前选中模型</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {selectedModelData ? (
+              <>
+                <div className="text-lg font-bold truncate">{selectedModelData.name}</div>
+                <p className="text-xs text-muted-foreground">
+                  ${selectedModelData.price}/百万 · {selectedModelData.score} 分
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="text-lg font-bold text-muted-foreground">未选择</div>
+                <p className="text-xs text-muted-foreground">点击列表选择模型</p>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -198,6 +257,118 @@ export function ChartSection({ filters }: ChartSectionProps) {
           ) : (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               没有符合条件的模型
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="w-full border-border/50 bg-card/50 backdrop-blur-sm shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+          <div>
+            <CardTitle className="text-base font-semibold">模型对比清单</CardTitle>
+            <CardDescription>
+              共 {sortedData.length} 个符合条件的模型
+            </CardDescription>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground">排序：</span>
+            <Button
+              variant={sortType === 'price-asc' ? 'default' : 'secondary'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setSortType('price-asc')}
+            >
+              价格最低
+            </Button>
+            <Button
+              variant={sortType === 'score-desc' ? 'default' : 'secondary'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setSortType('score-desc')}
+            >
+              评分最高
+            </Button>
+            <Button
+              variant={sortType === 'value-desc' ? 'default' : 'secondary'}
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setSortType('value-desc')}
+            >
+              性价比
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {sortedData.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/50">
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">模型名称</th>
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">系列</th>
+                    <th className="text-left py-3 px-2 font-medium text-muted-foreground">类型</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">价格 ($/百万)</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">性能评分</th>
+                    <th className="text-right py-3 px-2 font-medium text-muted-foreground">性价比</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedData.map((item) => (
+                    <tr
+                      key={item.name}
+                      onClick={() => handleModelClick(item.name)}
+                      className={`border-b border-border/30 cursor-pointer transition-all duration-150 hover:bg-primary/5 ${
+                        selectedModel === item.name
+                          ? 'bg-primary/10 ring-1 ring-primary/30 ring-inset'
+                          : ''
+                      }`}
+                    >
+                      <td className="py-3 px-2">
+                        <span className="font-medium">{item.name}</span>
+                      </td>
+                      <td className="py-3 px-2">
+                        <Badge
+                          variant="outline"
+                          className="text-xs"
+                          style={{
+                            borderColor: FAMILY_COLORS[item.family] || 'var(--border)',
+                            color: FAMILY_COLORS[item.family] || 'var(--foreground)',
+                          }}
+                        >
+                          {item.family}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2">
+                        <Badge variant={item.type === '开源' ? 'secondary' : 'default'} className="text-xs">
+                          {item.type}
+                        </Badge>
+                      </td>
+                      <td className="py-3 px-2 text-right font-mono">${item.price}</td>
+                      <td className="py-3 px-2 text-right font-mono">{item.score}</td>
+                      <td className="py-3 px-2 text-right font-mono font-semibold text-primary">
+                        {getValueRatio(item.score, item.price)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+              <svg
+                className="w-12 h-12 mb-3 opacity-50"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              <p className="text-sm">暂无符合条件的模型，请调整筛选条件</p>
             </div>
           )}
         </CardContent>
